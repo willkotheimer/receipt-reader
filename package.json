@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Governance enforcement tooling for The Receipt Reader (governance.md §3, §5, §10). The client application carries its own package.json under src/receipt-reader.web.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "engines": {
     "node": "22.22.3"
   },
