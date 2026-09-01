@@ -1,0 +1,26 @@
+{
+  "$comment": "governance.md §10. Permissive licenses only. Any addition is an architectural decision: record an ADR before approving a copyleft or source-available license. This repository's own private manifest is excluded from the scan rather than listed here, because §10 governs third-party dependencies.",
+  "allowed": [
+    "0BSD",
+    "Apache-2.0",
+    "BlueOak-1.0.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CC-BY-3.0",
+    "CC-BY-4.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Python-2.0",
+    "Unlicense",
+    "WTFPL"
+  ],
+  "notes": {
+    "CC-BY-3.0": "Attribution-only, not copyleft. Reached solely via spdx-exceptions and spdx-ranges, which are SPDX license-identifier data tables rather than executable code. Approved without an ADR because the allowlist rule above reserves ADRs for copyleft and source-available terms.",
+    "MPL-2.0": "Weak file-level copyleft. Approved for build-time dependencies ONLY, per ADR-0002 - it reaches us solely via vitest -> vite -> lightningcss, Vite’s CSS transformer, which is never linked into or distributed with the application. Deliberately absent from \"allowed\", so an MPL package entering the runtime tree fails the production scan."
+  },
+  "allowedBuildTime": [
+    "MPL-2.0"
+  ]
+}

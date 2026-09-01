@@ -1,0 +1,5 @@
+# governance.md §5, §10 — fail closed before the commit is written.
+# Licenses are scanned in CI rather than here: the scan walks node_modules and is too
+# slow for a per-commit hook.
+npm run gov:pins
+npm run gov:findings

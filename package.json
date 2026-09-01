@@ -1,0 +1,26 @@
+{
+  "name": "receipt-reader-governance",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Governance enforcement tooling for The Receipt Reader (governance.md §3, §5, §10). The client application carries its own package.json under src/receipt-reader.web.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "22.22.3"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gov:pins": "node scripts/gov/check-pins.mjs",
+    "gov:ref": "node scripts/gov/check-governance-ref.mjs",
+    "gov:findings": "node scripts/gov/check-findings.mjs",
+    "gov:licenses": "node scripts/gov/check-licenses.mjs",
+    "gov:all": "npm run gov:pins && npm run gov:findings && npm run gov:licenses",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "9.1.7",
+    "license-checker": "25.0.1",
+    "vitest": "4.1.11"
+  }
+}
