@@ -16,6 +16,18 @@
 
 set -euo pipefail
 
+# Git Bash on Windows (MSYS) rewrites arguments that look like Unix paths before handing
+# them to a native executable. An ARM scope such as
+#   /subscriptions/<id>/resourceGroups/<name>
+# is turned into
+#   C:/Program Files/Git/subscriptions/<id>/resourceGroups/<name>
+# and az then fails with the entirely unrelated "(MissingSubscription) The request did not
+# have a subscription or a valid tenant level resource provider."
+#
+# This broke the role assignment on the first real run of this script. Observed, not
+# theorised: reproduced with exit code 3.
+export MSYS_NO_PATHCONV=1
+
 # ---------------------------------------------------------------------------------------
 # Configuration. Change these only if the corresponding values in main.bicep also change.
 # ---------------------------------------------------------------------------------------
@@ -110,11 +122,17 @@ az identity federated-credential create \
 # assignment instead of two.
 # ---------------------------------------------------------------------------------------
 #
-# The retry is not defensive padding. A just-created managed identity's service principal
-# is not immediately visible to the RBAC service, so this call fails intermittently with
-# "Cannot find principal" — and because it is the one step everything else depends on, a
-# silent skip produces a bootstrap that prints "complete" and a deployment that dies with
-# an authorization error minutes later. Observed failing on first run.
+# This step failed on the first real run of this script. The cause was the MSYS path
+# rewriting handled at the top of the file, not anything about RBAC.
+#
+# The retry below is a second, independent guard: a just-created managed identity's service
+# principal is not always visible to the RBAC service yet, which produces a genuine
+# "Cannot find principal" failure. That is a real phenomenon, but it was NOT what happened
+# here — do not read the retry as evidence of the original diagnosis.
+#
+# Either way, this is the one step everything else depends on, so it verifies rather than
+# assumes: a bootstrap that prints "complete" without this grant produces a deployment that
+# dies with an authorization error minutes later, far from the actual mistake.
 echo "==> Granting Owner on the resource group (scoped, not subscription-wide)"
 
 RG_SCOPE="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
