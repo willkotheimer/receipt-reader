@@ -3,6 +3,8 @@
 > Derived from `governance.md` v1.0.1. **21 stories delivered across 8 pull requests.**
 > Every story keeps its full deliverables and acceptance criteria — the granularity lives at
 > the *commit* level, not the PR level.
+>
+> Repository: <https://github.com/willkotheimer/receipt-reader> (public)
 
 ## Why stories group into PRs
 
@@ -152,8 +154,13 @@ identity CI authenticates as:
 
 1. Create `rg-receipt-reader-dev`
 2. Create `id-rcpt-deploy` (user-assigned MI)
-3. Add its federated credential for `repo:<owner>/receipt-reader:ref:refs/heads/main`, plus an
-   `environment:production` subject — **and no bare `pull_request` subject** (see below)
+3. Add its federated credentials — **and no bare `pull_request` subject** (see below):
+   - `repo:willkotheimer/receipt-reader:ref:refs/heads/main`
+   - `repo:willkotheimer/receipt-reader:environment:production`
+
+   The subject must match character for character. A wrong owner or ref fails closed at token
+   exchange with an opaque error, so it is worth re-reading against
+   <https://github.com/willkotheimer/receipt-reader> before running the bootstrap.
 4. Grant it **Owner**, or Contributor + User Access Administrator, scoped to the RG only
 5. Grant the **developer's own user account** `Cognitive Services User` on the AI resource
 
