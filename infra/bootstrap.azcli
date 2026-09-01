@@ -109,13 +109,52 @@ az identity federated-credential create \
 # is used here because at this scope the two are equivalent in blast radius and Owner is one
 # assignment instead of two.
 # ---------------------------------------------------------------------------------------
+#
+# The retry is not defensive padding. A just-created managed identity's service principal
+# is not immediately visible to the RBAC service, so this call fails intermittently with
+# "Cannot find principal" — and because it is the one step everything else depends on, a
+# silent skip produces a bootstrap that prints "complete" and a deployment that dies with
+# an authorization error minutes later. Observed failing on first run.
 echo "==> Granting Owner on the resource group (scoped, not subscription-wide)"
-az role assignment create \
-  --assignee-object-id "${IDENTITY_PRINCIPAL_ID}" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Owner" \
-  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}" \
-  --output none
+
+RG_SCOPE="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
+
+for attempt in 1 2 3 4 5; do
+  if az role assignment create \
+    --assignee-object-id "${IDENTITY_PRINCIPAL_ID}" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Owner" \
+    --scope "${RG_SCOPE}" \
+    --output none 2>/dev/null; then
+    echo "    granted on attempt ${attempt}"
+    break
+  fi
+  if [ "${attempt}" -eq 5 ]; then
+    echo "    ERROR: could not create the role assignment after 5 attempts." >&2
+    echo "    Grant it manually, then re-run this script:" >&2
+    echo "      az role assignment create --assignee-object-id ${IDENTITY_PRINCIPAL_ID} --assignee-principal-type ServicePrincipal --role Owner --scope ${RG_SCOPE}" >&2
+    exit 1
+  fi
+  echo "    attempt ${attempt} failed (AAD replication lag), retrying in 10s"
+  sleep 10
+done
+
+# Verify rather than trust. The create call can report success while the assignment is not
+# yet readable, and every later step assumes this grant exists.
+echo "==> Verifying the grant"
+for attempt in 1 2 3 4 5 6; do
+  granted="$(az role assignment list --all --subscription "${SUBSCRIPTION_ID}" \
+    --query "[?principalId=='${IDENTITY_PRINCIPAL_ID}' && scope=='${RG_SCOPE}'] | length(@)" -o tsv 2>/dev/null || echo 0)"
+  if [ "${granted}" != "0" ]; then
+    echo "    verified"
+    break
+  fi
+  if [ "${attempt}" -eq 6 ]; then
+    echo "    ERROR: the role assignment is not readable. Do not proceed - the deployment will fail." >&2
+    exit 1
+  fi
+  sleep 10
+done
 
 # ---------------------------------------------------------------------------------------
 # 5. Developer data-plane grant.

@@ -77,7 +77,14 @@ until it exists.
 
 ## Running the API locally
 
-Because the AI account is keyless, your own account needs the data-plane role:
+Because the AI account is keyless, your own account needs the data-plane role.
+
+> **Windows users:** the bash blocks below use `\` for line continuation, which PowerShell
+> does not understand — it uses a backtick. Every multi-line command is given in both
+> forms. `bootstrap.azcli` itself is a bash script: run it as `bash infra/bootstrap.azcli`,
+> not directly from PowerShell.
+
+**bash:**
 
 ```bash
 az login
@@ -88,17 +95,40 @@ az deployment sub create \
   --parameters developerPrincipalId=$(az ad signed-in-user show --query id -o tsv)
 ```
 
+**PowerShell:**
+
+```powershell
+az login
+az deployment sub create `
+  --location centralus `
+  --template-file infra/main.bicep `
+  --parameters infra/main.dev.bicepparam `
+  --parameters developerPrincipalId=$(az ad signed-in-user show --query id -o tsv)
+```
+
 Skip this and the first local run fails with a 401 — at which point the tempting fix is to
 re-enable local auth and paste a key, silently undoing the keyless design. That is why the
 grant is a first-class parameter rather than a note in a wiki.
 
 ## Verification
 
+**bash:**
+
 ```bash
 az bicep build --file infra/main.bicep --stdout > /dev/null   # compiles with zero warnings
 az deployment sub what-if \
   --location centralus \
   --template-file infra/main.bicep \
+  --parameters infra/main.dev.bicepparam
+```
+
+**PowerShell:**
+
+```powershell
+az bicep build --file infra/main.bicep --stdout > $null
+az deployment sub what-if `
+  --location centralus `
+  --template-file infra/main.bicep `
   --parameters infra/main.dev.bicepparam
 ```
 
