@@ -1,0 +1,2 @@
+# governance.md §3 — every commit names the clause it serves, and any ADR it cites exists.
+node scripts/gov/check-governance-ref.mjs "$1"
