@@ -33,6 +33,8 @@ are prefixed `S<N> (red):` so the §6 audit and a human reader agree on what hap
 | Custom domain | **Deferred**, module written but gated | `customDomain == ''` deploys no DNS resources |
 | Enforcement | **Full mechanical** | Real analyzers/gates, per the §2 Enforcement Matrix |
 | Solution format | `ReceiptReader.slnx` | .NET 10 default; needs VS 2022 17.13+ |
+| Repo visibility | **Public** — portfolio piece | Drives the S6 fork-PR hardening; IDs go in secrets as tidiness, not as a control |
+| Secrets to store | **None exist** | Keyless AAD + OIDC eliminate the only two; hence no Key Vault |
 
 ## Verified against the live subscription (`861d741b-…`)
 
@@ -150,20 +152,56 @@ identity CI authenticates as:
 
 1. Create `rg-receipt-reader-dev`
 2. Create `id-rcpt-deploy` (user-assigned MI)
-3. Add its federated credentials for `repo:<owner>/receipt-reader:ref:refs/heads/main` and a
-   `pull_request` subject for the what-if gate
+3. Add its federated credential for `repo:<owner>/receipt-reader:ref:refs/heads/main`, plus an
+   `environment:production` subject — **and no bare `pull_request` subject** (see below)
 4. Grant it **Owner**, or Contributor + User Access Administrator, scoped to the RG only
+5. Grant the **developer's own user account** `Cognitive Services User` on the AI resource
 
 Step 4 is not optional: `main.bicep` creates a role assignment, and **Contributor alone cannot
 create role assignments** — Contributor-only looks correct until the first deploy fails with an
 authorization error.
 
-Then `.github/workflows/deploy.yml`: OIDC login → `bicep build` → `what-if` gate → deploy →
-`dotnet publish` → zip deploy. Repo **variables** (not secrets — none are sensitive under OIDC):
-`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
+Step 5 is not optional either. With `disableLocalAuth: true`, running the API locally needs the
+developer's own identity to hold the data-plane role so `DefaultAzureCredential` works off
+`az login`. Without it the first local run 401s, and the obvious "fix" is to re-enable local auth
+and paste a key — silently undoing the keyless design.
 
-**AC:** After the single bootstrap run, a branch push deploys end to end. The repo holds no secret
-of any kind, and no further manual Azure step is ever required.
+### Public-repo hardening
+
+The repo is public, so anyone can open a PR. The federated credential is the only place a
+stranger's action can reach Azure, so it — not identifier visibility — is what gets scrutiny:
+
+- **No bare `pull_request` federated subject.** Scope trust to `ref:refs/heads/main` and a GitHub
+  `environment` subject only.
+- **The deploy job sits behind a GitHub Environment with required reviewers**, so any run that
+  touches Azure needs an explicit human approval.
+- **`what-if` on PRs runs with no Azure credentials** — `bicep build`, `bicep lint`, and the
+  governance gates only. The PR-time `what-if` preview is a genuine loss; it is recovered by
+  running `what-if` from `main` post-merge, immediately before the apply step, rather than by
+  handing fork PRs a token path.
+- **Never `pull_request_target`.** It runs untrusted code with write permissions and is the
+  standard way public repos get compromised.
+- **`scmBasicAuthPolicy` and `ftpsState` disabled in S4**, closing the publish-profile path at
+  the platform. The common `azure/webapps-deploy` recipe uses a long-lived publish profile, which
+  would quietly undo the entire OIDC design.
+
+### Secrets
+
+There are none to store. `disableLocalAuth: true` means no Document Intelligence key exists, and
+OIDC means no publish profile exists — the two values that would otherwise force a secret. This is
+also why the project needs no Key Vault.
+
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` go in GitHub **secrets**. Not because
+they are credentials — they are not, and publishing them would not be a vulnerability, since OIDC
+trust rests on the subject claim rather than on secrecy — but because a public repo has no reason
+to advertise the tenant. Treat this as tidiness, never as a control.
+
+Then `.github/workflows/deploy.yml`: OIDC login → `bicep build` → `what-if` → deploy →
+`dotnet publish` → zip deploy, with the Azure-touching jobs inside the protected environment.
+
+**AC:** After the single bootstrap run, a merge to `main` deploys end to end following one
+approval. The repo holds no credential of any kind, a fork PR can obtain no Azure token, and no
+further manual Azure step is ever required.
 
 ---
 
