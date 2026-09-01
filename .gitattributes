@@ -1,0 +1,32 @@
+# Normalize to LF in the repository, check out native on Windows.
+# The governance scripts (§2 schema diff, §5 findings, §10 pin check) parse these files
+# line by line; a stray CRLF must never be the reason a gate passes or fails.
+* text=auto
+
+*.cs        text diff=csharp
+*.csproj    text
+*.slnx      text
+*.props     text
+*.targets   text
+*.json      text
+*.md        text
+*.yml       text
+*.yaml      text
+*.bicep     text
+*.bicepparam text
+*.ts        text
+*.tsx       text
+*.mjs       text
+*.html      text
+*.css       text
+
+# Shell scripts and git hooks must stay LF or they will not execute.
+*.sh        text eol=lf
+*.azcli     text eol=lf
+.husky/*    text eol=lf
+
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.pdf       binary
+*.ico       binary

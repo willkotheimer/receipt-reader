@@ -1,0 +1,54 @@
+# ---------- .NET ----------
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+*.userprefs
+.vs/
+TestResults/
+coverage/
+*.coverage
+*.coverlet.json
+coverage.cobertura.xml
+coverage.opencover.xml
+
+# ---------- Node ----------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# ---------- Playwright ----------
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# ---------- Editors / OS ----------
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---------- Secrets & local config ----------
+# Nothing secret should ever reach this repo (§8, §10). These are belt-and-braces.
+*.env
+.env.*
+!.env.example
+appsettings.Development.local.json
+*.pfx
+*.publishsettings
+azure.local.json
+
+# ---------- Bicep ----------
+# Compiled ARM output is a build artifact; the .bicep source is the contract.
+infra/**/*.json
+!infra/**/*.bicepparam
