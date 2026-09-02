@@ -56,11 +56,14 @@ const app = spawn(entry, [], {
     ...process.env,
     ASPNETCORE_URLS: `http://127.0.0.1:${PORT}`,
     ASPNETCORE_ENVIRONMENT: 'Production',
-    // No Document Intelligence endpoint is configured, so the analyzer is not registered
-    // and the analyze endpoint fails closed — which is exactly the path the fail-closed
-    // spec exercises. The happy path is covered by the API's own tests, where the analyzer
-    // can be substituted; driving the real model from E2E would spend the F0 page quota.
-    'DocumentIntelligence__Endpoint': '',
+    // Empty by default, so the analyzer is not registered and the analyze endpoint fails
+    // closed — which is exactly the path the fail-closed spec exercises. The happy path is
+    // covered by the API's own tests, where the analyzer can be substituted; driving the
+    // real model from the ordinary suite would spend the F0 page quota.
+    //
+    // The capture run is the exception and sets it deliberately, because a walkthrough that
+    // stubbed the model would be showing something the app does not do.
+    'DocumentIntelligence__Endpoint': process.env.DocumentIntelligence__Endpoint ?? '',
   },
 });
 

@@ -37,7 +37,20 @@ curl.exe -X POST http://localhost:5199/api/receipts/analyze `
 
 | File | Notes |
 |---|---|
-| `primark-franklin-tn.jpg` | Photographed at an angle, creased, faded thermal print. Deliberately a hard case: `MerchantName` is legible, but the total appears twice and the tax line reads `$10.00 @ 0.0%`, which is the kind of thing that produces a low confidence score and exercises the §1 fail-closed path rather than the happy one. |
+| `primark-franklin-tn.jpg` | As photographed: creased, faded thermal print, and lying sideways in frame. **The model scores this 0.258 against the 0.50 threshold and the app refuses it** — so this is the fixture that exercises the §1 fail-closed path against the real service. |
+| `primark-franklin-tn-upright.jpg` | The same photograph rotated 90° and scaled to 1600px. Nothing else changed, and it reads: `PRIMARK`, total `$10.00`, tax `$0.00`, one item `NOTR H TEXANS SHO`. |
+
+The pair exists because of what the first one taught. Orientation, not damage, was what
+defeated the model — the paper is just as creased in both. Rotating it took the extraction
+from refused to clean, which is worth knowing before concluding a receipt is unreadable.
+
+A smaller detail, verified twice: rotating the other way (270°) reads the item as
+`NDTR H TEXANS SHO`. The model is genuinely unsure of that character on this paper, and says
+something different depending on which way up it looks at it.
+
+Both are used by the portfolio capture spec in `tests/e2e/specs/capture.spec.ts`, which is
+the one place in this repository that calls the real model — a walkthrough that stubbed it
+would be showing something the app does not do.
 
 ## Adding more
 
