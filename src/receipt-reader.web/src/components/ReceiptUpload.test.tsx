@@ -42,7 +42,7 @@ describe('ReceiptUpload', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Unable to process document.');
   });
 
-  it('adds no explanation of its own to the error', async () => {
+  it('adds no explanation of its own to the error', () => {
     // The API withholds the reason deliberately. A helpful "try a clearer photo" here
     // would be the UI inventing a cause it does not know.
     render(

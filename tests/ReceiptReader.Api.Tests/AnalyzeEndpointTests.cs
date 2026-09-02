@@ -181,7 +181,7 @@ public class AnalyzeEndpointTests
     }
 
     [Fact]
-    public async Task Endpoint_carries_a_governance_reference()
+    public void Endpoint_carries_a_governance_reference()
     {
         var analyzer = new Mock<IReceiptAnalyzer>();
         using var factory = FactoryWith(analyzer.Object);
