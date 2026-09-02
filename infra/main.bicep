@@ -52,12 +52,29 @@ auth and paste a key — which would undo the keyless design. Leave empty in CI.
 ''')
 param developerPrincipalId string = ''
 
+@description('''
+Globally unique App Service name, which becomes <name>.azurewebsites.net.
+
+Deliberately meaningful rather than hashed. The site name is the URL a person sees until a
+custom domain exists, and app-rcpt-dev-v73tchkn told them nothing. The willkai- prefix
+groups this with future AI projects on the same free Azure hostname, which is the shared
+namespace a custom apex would otherwise provide.
+
+App Service hostnames are unique across all of Azure, so this must be checked with
+`az webapp check-name` before changing it - and changing it replaces the site, because the
+name is immutable.
+''')
+param appServiceName string = 'willkai-receipt-reader'
+
 @description('Custom hostname, e.g. receipt-reader.willkai.dev. Empty deploys no DNS resources.')
 param customDomain string = ''
 
 // Deterministic per-subscription suffix. Both the AI account and the web app need globally
 // unique names, and a hash of the subscription id keeps redeploys stable while avoiding
 // collisions with anyone else's deployment of this template.
+// Retained for the Document Intelligence account only. That name doubles as the AAD custom
+// subdomain and must be globally unique, but nobody ever reads it — it appears only in an
+// app setting. The App Service name, which people do read, is chosen rather than hashed.
 var token = take(uniqueString(subscription().id, workloadName, environmentName), 8)
 
 var tags = {
@@ -119,7 +136,7 @@ module app 'modules/app.bicep' = {
   params: {
     location: location
     planName: 'plan-${workloadName}-${environmentName}'
-    siteName: 'app-${workloadName}-${environmentName}-${token}'
+    siteName: appServiceName
     sku: appServiceSku
     managedIdentityId: identity.outputs.id
     managedIdentityClientId: identity.outputs.clientId
