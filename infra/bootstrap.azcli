@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+#
+# One-time bootstrap. Run locally, once, as a subscription Owner.
+#
+# CI cannot create the identity that CI authenticates as, so this script breaks that
+# chicken-and-egg. After it succeeds, every subsequent deployment runs from GitHub Actions
+# and no further manual Azure step is ever required.
+#
+# governance.md §8. Nothing here produces a secret: the GitHub trust is a federated
+# credential on a user-assigned managed identity, so there is no client secret to store or
+# rotate. The three values printed at the end are identifiers, not credentials.
+#
+# Governance-Ref: §8
+#
+# Usage:  bash infra/bootstrap.azcli
+
+set -euo pipefail
+
+# Git Bash on Windows (MSYS) rewrites arguments that look like Unix paths before handing
+# them to a native executable. An ARM scope such as
+#   /subscriptions/<id>/resourceGroups/<name>
+# is turned into
+#   C:/Program Files/Git/subscriptions/<id>/resourceGroups/<name>
+# and az then fails with the entirely unrelated "(MissingSubscription) The request did not
+# have a subscription or a valid tenant level resource provider."
+#
+# This broke the role assignment on the first real run of this script. Observed, not
+# theorised: reproduced with exit code 3.
+export MSYS_NO_PATHCONV=1
+
+# ---------------------------------------------------------------------------------------
+# Configuration. Change these only if the corresponding values in main.bicep also change.
+# ---------------------------------------------------------------------------------------
+LOCATION="centralus"
+ENVIRONMENT="dev"
+WORKLOAD="rcpt"
+RESOURCE_GROUP="rg-receipt-reader-${ENVIRONMENT}"
+DEPLOY_IDENTITY="id-${WORKLOAD}-deploy"
+GITHUB_OWNER="willkotheimer"
+GITHUB_REPO="receipt-reader"
+GITHUB_ENVIRONMENT="production"
+
+SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+TENANT_ID="$(az account show --query tenantId -o tsv)"
+
+echo "Subscription : ${SUBSCRIPTION_ID}"
+echo "Tenant       : ${TENANT_ID}"
+echo "Resource group: ${RESOURCE_GROUP}"
+echo
+
+# ---------------------------------------------------------------------------------------
+# 1. Resource group.
+#
+# main.bicep also declares this group, and declaring it twice is intentional: the template
+# stays runnable from nothing, while this script gives the deploy identity somewhere to be
+# scoped before the first deployment exists.
+# ---------------------------------------------------------------------------------------
+echo "==> Creating resource group"
+az group create \
+  --name "${RESOURCE_GROUP}" \
+  --location "${LOCATION}" \
+  --tags workload=receipt-reader environment="${ENVIRONMENT}" managedBy=bootstrap \
+  --output none
+
+# ---------------------------------------------------------------------------------------
+# 2. Deploy identity.
+#
+# A user-assigned managed identity rather than an app registration. Microsoft.ManagedIdentity
+# supports federatedIdentityCredentials, so GitHub OIDC works without creating an Entra
+# application, without a client secret, and without directory write permissions.
+# ---------------------------------------------------------------------------------------
+echo "==> Creating deploy identity"
+az identity create \
+  --name "${DEPLOY_IDENTITY}" \
+  --resource-group "${RESOURCE_GROUP}" \
+  --location "${LOCATION}" \
+  --output none
+
+IDENTITY_CLIENT_ID="$(az identity show --name "${DEPLOY_IDENTITY}" --resource-group "${RESOURCE_GROUP}" --query clientId -o tsv)"
+IDENTITY_PRINCIPAL_ID="$(az identity show --name "${DEPLOY_IDENTITY}" --resource-group "${RESOURCE_GROUP}" --query principalId -o tsv)"
+
+# ---------------------------------------------------------------------------------------
+# 3. Federated credentials.
+#
+# The subject must match GitHub's token claim character for character; a wrong owner, repo
+# or ref fails closed at token exchange with an opaque error.
+#
+# Note what is NOT here: a bare `pull_request` subject. This repository is public, so anyone
+# can open a PR. Trust is limited to the main branch and to the protected environment, and
+# the what-if job on pull requests runs with no Azure credentials at all.
+# ---------------------------------------------------------------------------------------
+echo "==> Adding federated credential: main branch"
+az identity federated-credential create \
+  --name "github-main" \
+  --identity-name "${DEPLOY_IDENTITY}" \
+  --resource-group "${RESOURCE_GROUP}" \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:${GITHUB_OWNER}/${GITHUB_REPO}:ref:refs/heads/main" \
+  --audiences "api://AzureADTokenExchange" \
+  --output none
+
+echo "==> Adding federated credential: production environment"
+az identity federated-credential create \
+  --name "github-environment-production" \
+  --identity-name "${DEPLOY_IDENTITY}" \
+  --resource-group "${RESOURCE_GROUP}" \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:${GITHUB_OWNER}/${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}" \
+  --audiences "api://AzureADTokenExchange" \
+  --output none
+
+# ---------------------------------------------------------------------------------------
+# 4. Role assignment, scoped to the resource group only.
+#
+# Owner rather than Contributor, and this is not optional: main.bicep creates a role
+# assignment (Cognitive Services User on the AI account), and Contributor cannot create role
+# assignments. Granting Contributor alone looks correct right up until the first deployment
+# fails with an authorization error.
+#
+# The narrower alternative is Contributor + User Access Administrator, also RG-scoped. Owner
+# is used here because at this scope the two are equivalent in blast radius and Owner is one
+# assignment instead of two.
+# ---------------------------------------------------------------------------------------
+#
+# This step failed on the first real run of this script. The cause was the MSYS path
+# rewriting handled at the top of the file, not anything about RBAC.
+#
+# The retry below is a second, independent guard: a just-created managed identity's service
+# principal is not always visible to the RBAC service yet, which produces a genuine
+# "Cannot find principal" failure. That is a real phenomenon, but it was NOT what happened
+# here — do not read the retry as evidence of the original diagnosis.
+#
+# Either way, this is the one step everything else depends on, so it verifies rather than
+# assumes: a bootstrap that prints "complete" without this grant produces a deployment that
+# dies with an authorization error minutes later, far from the actual mistake.
+echo "==> Granting Owner on the resource group (scoped, not subscription-wide)"
+
+RG_SCOPE="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
+
+for attempt in 1 2 3 4 5; do
+  if az role assignment create \
+    --assignee-object-id "${IDENTITY_PRINCIPAL_ID}" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Owner" \
+    --scope "${RG_SCOPE}" \
+    --output none 2>/dev/null; then
+    echo "    granted on attempt ${attempt}"
+    break
+  fi
+  if [ "${attempt}" -eq 5 ]; then
+    echo "    ERROR: could not create the role assignment after 5 attempts." >&2
+    echo "    Grant it manually, then re-run this script:" >&2
+    echo "      az role assignment create --assignee-object-id ${IDENTITY_PRINCIPAL_ID} --assignee-principal-type ServicePrincipal --role Owner --scope ${RG_SCOPE}" >&2
+    exit 1
+  fi
+  echo "    attempt ${attempt} failed (AAD replication lag), retrying in 10s"
+  sleep 10
+done
+
+# Verify rather than trust. The create call can report success while the assignment is not
+# yet readable, and every later step assumes this grant exists.
+echo "==> Verifying the grant"
+for attempt in 1 2 3 4 5 6; do
+  granted="$(az role assignment list --all --subscription "${SUBSCRIPTION_ID}" \
+    --query "[?principalId=='${IDENTITY_PRINCIPAL_ID}' && scope=='${RG_SCOPE}'] | length(@)" -o tsv 2>/dev/null || echo 0)"
+  if [ "${granted}" != "0" ]; then
+    echo "    verified"
+    break
+  fi
+  if [ "${attempt}" -eq 6 ]; then
+    echo "    ERROR: the role assignment is not readable. Do not proceed - the deployment will fail." >&2
+    exit 1
+  fi
+  sleep 10
+done
+
+# ---------------------------------------------------------------------------------------
+# 5. Developer data-plane grant.
+#
+# The AI account is keyless (disableLocalAuth), so running the API locally needs your own
+# account to hold Cognitive Services User on it. The account does not exist yet, so this is
+# passed into the first deployment rather than granted here.
+# ---------------------------------------------------------------------------------------
+DEVELOPER_PRINCIPAL_ID="$(az ad signed-in-user show --query id -o tsv)"
+
+cat <<SUMMARY
+
+==========================================================================================
+Bootstrap complete.
+
+Add these to GitHub as repository *secrets*
+(Settings -> Secrets and variables -> Actions -> New repository secret).
+
+They are identifiers, not credentials — OIDC trust rests on the subject claim, not on
+secrecy. They are secrets here only so a public repository does not advertise the tenant.
+
+  AZURE_CLIENT_ID        ${IDENTITY_CLIENT_ID}
+  AZURE_TENANT_ID        ${TENANT_ID}
+  AZURE_SUBSCRIPTION_ID  ${SUBSCRIPTION_ID}
+
+Then create the GitHub environment the deploy job is gated on:
+  Settings -> Environments -> New environment -> "${GITHUB_ENVIRONMENT}"
+  Add yourself as a required reviewer.
+
+Finally, run the first deployment locally, granting your own account data-plane access so
+the API can be run against DefaultAzureCredential without re-enabling local auth:
+
+  az deployment sub create \\
+    --location ${LOCATION} \\
+    --template-file infra/main.bicep \\
+    --parameters infra/main.dev.bicepparam \\
+    --parameters developerPrincipalId=${DEVELOPER_PRINCIPAL_ID}
+
+==========================================================================================
+SUMMARY

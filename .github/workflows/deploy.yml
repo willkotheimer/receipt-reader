@@ -1,0 +1,128 @@
+name: Deploy
+
+# governance.md §8. This repository is public, so anyone can open a pull request. The
+# federated credential is the only path from a stranger's action to the Azure subscription,
+# so the split below is the security boundary:
+#
+#   validate  — runs on every PR, with NO Azure credentials at all
+#   deploy    — runs only on main, inside an environment with required reviewers
+#
+# There is deliberately no `pull_request` federated subject in Azure, and deliberately no
+# use of `pull_request_target`, which runs untrusted code with write permissions and is the
+# standard way public repositories get compromised.
+#
+# Governance-Ref: §8
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'src/**'
+      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'src/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# Least privilege by default. The deploy job widens this for itself only.
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------------------
+  # Credential-free validation. Safe to run on a fork PR precisely because it can reach
+  # nothing: it compiles and lints the templates and never authenticates to Azure.
+  #
+  # The cost is that a PR gets no what-if preview. That preview is recovered in the deploy
+  # job, which runs what-if against the real subscription immediately before applying —
+  # rather than by handing pull requests a token path.
+  # ---------------------------------------------------------------------------------------
+  validate:
+    name: Validate templates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile Bicep
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+
+      - name: Lint Bicep
+        run: |
+          # Warnings are failures here. A template that compiles with warnings is a
+          # template nobody reads the warnings of.
+          output=$(az bicep build --file infra/main.bicep --stdout 2>&1 >/dev/null || true)
+          echo "$output"
+          if echo "$output" | grep -qE "Warning|Error"; then
+            echo "::error::Bicep reported warnings or errors"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------------------
+  # Deploy. Only from main, only inside the protected environment.
+  #
+  # `environment: production` does two things at once: it gates the run on a required
+  # reviewer, and it makes GitHub mint an OIDC token whose subject is
+  # `repo:OWNER/REPO:environment:production` — which is one of exactly two subjects the
+  # Azure identity trusts.
+  # ---------------------------------------------------------------------------------------
+  deploy:
+    name: Deploy infrastructure
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # required to request the OIDC token; nothing else needs it
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC — no secret involved)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-if
+        # The preview a PR could not safely have. Runs against the real subscription with
+        # the real credential, immediately before the apply, so what is printed is what is
+        # about to happen.
+        run: |
+          az deployment sub what-if \
+            --location centralus \
+            --template-file infra/main.bicep \
+            --parameters infra/main.dev.bicepparam \
+            --name "receipt-reader-$(date +%Y%m%d-%H%M%S)"
+
+      - name: Deploy
+        id: deploy
+        run: |
+          az deployment sub create \
+            --location centralus \
+            --template-file infra/main.bicep \
+            --parameters infra/main.dev.bicepparam \
+            --name "receipt-reader-$(date +%Y%m%d-%H%M%S)" \
+            --query properties.outputs \
+            --output json > outputs.json
+          echo "appServiceName=$(jq -r .appServiceName.value outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "appHostName=$(jq -r .appHostName.value outputs.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed"
+            echo ""
+            echo "- App: \`${{ steps.deploy.outputs.appServiceName }}\`"
+            echo "- URL: https://${{ steps.deploy.outputs.appHostName }}"
+          } >> "$GITHUB_STEP_SUMMARY"
