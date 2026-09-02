@@ -127,5 +127,8 @@ resource ftpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@20
 }
 
 output defaultHostName string = site.properties.defaultHostName
+
+@description('Proves domain ownership to App Service. Needed by the asuid TXT record.')
+output customDomainVerificationId string = site.properties.customDomainVerificationId
 output siteName string = site.name
 output id string = site.id

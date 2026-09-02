@@ -98,6 +98,28 @@ function isMasked(source, mask, index, length) {
 }
 
 /**
+ * Given a position just inside a callback's opening parenthesis, returns the position of
+ * its closing parenthesis — so the caller can look for the function body after it rather
+ * than at the next brace it happens to find.
+ *
+ * Without this, `async ({ page }) => {` hands back the destructuring `{ page }` as the
+ * body, and every Playwright spec is reported as assertion-free and unawaited.
+ */
+function endOfParameterList(mask, from) {
+  let depth = 1;
+
+  for (let i = from; i < mask.length; i += 1) {
+    if (mask[i] === '(') depth += 1;
+    else if (mask[i] === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+/**
  * An async body that starts work without awaiting it: a rejection becomes an unhandled
  * rejection rather than a failing test, so the test passes while the thing it exercises
  * is broken.
@@ -108,8 +130,9 @@ function hasUnawaitedAsync(body, isAsync) {
 }
 
 export function findVitestTests(source, file) {
-  // it(...), test(...), it.each([...])(...), and their .only/.skip variants.
-  const declaration = /\b(?:it|test)(?:\.(?:each|only|skip|todo|concurrent))?\s*(?:\([^)]*\)\s*)?\(\s*(['"`])((?:\\.|(?!\1).)*)\1\s*,\s*(async\s*)?\(/g;
+  // it(...), test(...), it.each([...])(...), their .only/.skip variants, and callbacks
+  // written as either an arrow or a function expression.
+  const declaration = /\b(?:it|test)(?:\.(?:each|only|skip|todo|concurrent))?\s*(?:\([^)]*\)\s*)?\(\s*(['"`])((?:\\.|(?!\1).)*)\1\s*,\s*(async\s*)?(?:function\s*)?\(/g;
   const mask = maskLiterals(source);
   const tests = [];
 
@@ -117,7 +140,10 @@ export function findVitestTests(source, file) {
     // A test declaration inside a template literal is a fixture, not a test.
     if (isMasked(source, mask, match.index, 2)) continue;
 
-    const block = readBlock(source, mask, match.index + match[0].length);
+    const paramsEnd = endOfParameterList(mask, match.index + match[0].length);
+    if (paramsEnd === -1) continue;
+
+    const block = readBlock(source, mask, paramsEnd);
     if (!block) continue;
 
     tests.push({
@@ -141,7 +167,10 @@ export function findXunitTests(source, file) {
   for (const match of source.matchAll(declaration)) {
     if (isMasked(source, mask, match.index, 2)) continue;
 
-    const block = readBlock(source, mask, match.index + match[0].length);
+    const paramsEnd = endOfParameterList(mask, match.index + match[0].length);
+    if (paramsEnd === -1) continue;
+
+    const block = readBlock(source, mask, paramsEnd);
     if (!block) continue;
 
     tests.push({

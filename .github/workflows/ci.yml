@@ -1,0 +1,160 @@
+name: CI
+
+# governance.md §2 Enforcement Matrix, assembled.
+#
+# Every mechanical gate the document specifies runs here, on every pull request and on main.
+# No Azure credentials are used anywhere in this workflow — it is safe on a fork PR because
+# it can reach nothing.
+#
+# Governance-Ref: §2, §5, §6, §7, §10
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------------------
+  # The gates that read the repository rather than run it. Fast, and first, so a pinning or
+  # traceability mistake fails in under a minute rather than after the full test suite.
+  # ---------------------------------------------------------------------------------------
+  governance:
+    name: Governance gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The §6 audit walks the branch's commit range, which needs more than a shallow
+          # clone of the tip.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      - name: Gate tooling tests
+        run: npm test
+
+      - name: '§10 Provenance — exact version pinning'
+        run: npm run gov:pins
+
+      - name: '§5 Findings register'
+        run: npm run gov:findings
+
+      - name: '§2 Contract parity'
+        run: npm run gov:schema
+
+      - name: '§7 AI safeguards — no hollow tests'
+        run: npm run gov:assertions
+
+      - name: '§10 Provenance — license allowlist'
+        run: npm run gov:licenses
+
+      - name: '§6 TDD execution — commit order'
+        # Only meaningful on a pull request, where there is a branch range to audit. On a
+        # push to main the range is already merged and the question has been answered.
+        if: github.event_name == 'pull_request'
+        run: node scripts/gov/tdd-audit.mjs "origin/${{ github.base_ref }}" HEAD
+
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        # The client build is skipped: these tests never serve the SPA, and running npm here
+        # would duplicate the client job for no added coverage.
+        run: dotnet build ReceiptReader.slnx -c Release -p:SkipClientBuild=true
+
+      - name: Test
+        run: dotnet test ReceiptReader.slnx -c Release --no-build --collect:"XPlat Code Coverage"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: '**/TestResults/**/coverage.cobertura.xml'
+          if-no-files-found: warn
+
+  client:
+    name: Client tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/receipt-reader.web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/receipt-reader.web/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test:coverage
+
+      - name: Build
+        run: npx vite build
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install client dependencies
+        working-directory: src/receipt-reader.web
+        run: npm ci
+
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Run
+        working-directory: tests/e2e
+        run: npm test
+
+      - uses: actions/upload-artifact@v4
+        # §9 asks for video and screenshot capture on failure. Uploading only on failure
+        # keeps the artifact list meaningful — a green run has nothing worth downloading.
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          retention-days: 7

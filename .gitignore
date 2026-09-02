@@ -52,3 +52,7 @@ azure.local.json
 # Compiled ARM output is a build artifact; the .bicep source is the contract.
 infra/**/*.json
 !infra/**/*.bicepparam
+
+# ---------- Playwright / E2E ----------
+tests/e2e/.publish/
+tests/e2e/node_modules/

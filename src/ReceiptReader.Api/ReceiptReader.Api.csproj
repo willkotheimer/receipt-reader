@@ -11,4 +11,37 @@
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
   </ItemGroup>
 
+  <!--
+    governance.md §9 — the client is built into wwwroot on publish, so `dotnet publish`
+    produces the entire application and the deploy step has one artifact to upload.
+
+    Publish only, not build: running npm on every `dotnet build` would make the inner loop
+    and the test suite far slower for no benefit, since the tests never serve the client.
+  -->
+  <PropertyGroup>
+    <ClientDirectory>$(MSBuildProjectDirectory)/../receipt-reader.web</ClientDirectory>
+    <ClientBuildOutput>$(ClientDirectory)/dist</ClientBuildOutput>
+  </PropertyGroup>
+
+  <Target Name="BuildClient" BeforeTargets="PrepareForPublish" Condition="'$(SkipClientBuild)' != 'true'">
+    <Message Importance="high" Text="Building the client from $(ClientDirectory)" />
+
+    <!--
+      npm ci rather than npm install: it installs exactly what package-lock.json pins and
+      fails if the lockfile is out of step with package.json, which is what §10 asks for.
+    -->
+    <Exec Command="npm ci" WorkingDirectory="$(ClientDirectory)" />
+    <Exec Command="npm run build" WorkingDirectory="$(ClientDirectory)" />
+  </Target>
+
+  <Target Name="IncludeClientInPublish" AfterTargets="BuildClient" Condition="'$(SkipClientBuild)' != 'true'">
+    <ItemGroup>
+      <ClientFiles Include="$(ClientBuildOutput)/**/*" />
+      <ResolvedFileToPublish Include="@(ClientFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot/%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
 </Project>

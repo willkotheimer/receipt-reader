@@ -17,13 +17,18 @@ on:
   push:
     branches: [main]
     paths:
-      - 'infra/**'
+      # Deliberately narrower than infra/**. bootstrap.azcli is a one-time local script and
+      # the README is prose; neither is deployed, and matching them queued approvals for
+      # changes that could not alter the environment.
+      - 'infra/**/*.bicep'
+      - 'infra/**/*.bicepparam'
       - 'src/**'
       - '.github/workflows/deploy.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'infra/**'
+      - 'infra/**/*.bicep'
+      - 'infra/**/*.bicepparam'
       - 'src/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
@@ -118,6 +123,60 @@ jobs:
           echo "appServiceName=$(jq -r .appServiceName.value outputs.json)" >> "$GITHUB_OUTPUT"
           echo "appHostName=$(jq -r .appHostName.value outputs.json)" >> "$GITHUB_OUTPUT"
 
+      # -------------------------------------------------------------------------------------
+      # Application deployment.
+      #
+      # These steps were described in the plan from the start and were missing from this
+      # workflow until now, which is why the site existed but served nothing: the
+      # infrastructure was real and the application was never on it.
+      # -------------------------------------------------------------------------------------
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Matches global.json, which pins the SDK exactly (§10).
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/receipt-reader.web/package-lock.json
+
+      - name: Publish
+        # One artifact: the csproj builds the client into wwwroot as part of publish, so the
+        # API and the SPA are always deployed as a matched pair and cannot drift apart.
+        run: dotnet publish src/ReceiptReader.Api/ReceiptReader.Api.csproj -c Release -o ./publish
+
+      - name: Package
+        run: cd publish && zip -r ../app.zip . && cd ..
+
+      - name: Deploy application
+        # az webapp deploy, not azure/webapps-deploy: the latter authenticates with a publish
+        # profile, a long-lived credential that would undo the entire OIDC design. SCM basic
+        # auth is disabled on the site anyway, so that path is closed at the platform (§8).
+        run: |
+          az webapp deploy \
+            --resource-group rg-receipt-reader-dev \
+            --name "${{ steps.deploy.outputs.appServiceName }}" \
+            --src-path app.zip \
+            --type zip
+
+      - name: Smoke test
+        # Deploying without checking is how a broken build sits unnoticed. App Service takes
+        # a moment to recycle, so this retries rather than asserting immediately.
+        run: |
+          url="https://${{ steps.deploy.outputs.appHostName }}/api/health"
+          for attempt in $(seq 1 20); do
+            code=$(curl -s -o /tmp/health.json -w "%{http_code}" "$url" || true)
+            if [ "$code" = "200" ]; then
+              echo "healthy after ${attempt} attempt(s): $(cat /tmp/health.json)"
+              exit 0
+            fi
+            echo "attempt ${attempt}: HTTP ${code}"
+            sleep 10
+          done
+          echo "::error::the deployed app did not become healthy"
+          exit 1
+
       - name: Summary
         run: |
           {
@@ -125,4 +184,5 @@ jobs:
             echo ""
             echo "- App: \`${{ steps.deploy.outputs.appServiceName }}\`"
             echo "- URL: https://${{ steps.deploy.outputs.appHostName }}"
+            echo "- Health: https://${{ steps.deploy.outputs.appHostName }}/api/health"
           } >> "$GITHUB_STEP_SUMMARY"

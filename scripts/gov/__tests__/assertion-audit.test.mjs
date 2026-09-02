@@ -50,6 +50,30 @@ describe('findVitestTests', () => {
     const source = `it('async', async () => { await doSomethingAsync(); expect(1).toBe(1); });`;
     expect(findVitestTests(source, 'a.test.ts')[0].unawaitedAsync).toBe(false);
   });
+
+  it('reads the body past a destructured parameter, as Playwright specs are written', () => {
+    // `async ({ page }) => {` puts a brace before the function body. A block finder that
+    // takes the next brace reads `{ page }` as the body and reports every Playwright test
+    // as both assertion-free and unawaited — which is exactly what happened.
+    const source = `test('a spec', async ({ page }) => { await expect(page).toHaveTitle('x'); });`;
+    const [found] = findVitestTests(source, 'spec.ts');
+
+    expect(found.hasAssertion).toBe(true);
+    expect(found.unawaitedAsync).toBe(false);
+  });
+
+  it('reads the body past several destructured parameters', () => {
+    const source = `test('a spec', async ({ page, request }) => { const x = 1; });`;
+    const [found] = findVitestTests(source, 'spec.ts');
+
+    expect(found.hasAssertion).toBe(false);
+    expect(found.unawaitedAsync).toBe(true);
+  });
+
+  it('reads the body of a plain function expression', () => {
+    const source = `it('classic', function () { expect(1).toBe(1); });`;
+    expect(findVitestTests(source, 'a.test.ts')[0].hasAssertion).toBe(true);
+  });
 });
 
 describe('findXunitTests', () => {
