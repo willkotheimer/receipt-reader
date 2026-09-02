@@ -1,2 +1,8 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ReceiptReader.Api/ReceiptReader.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ReceiptReader.Api.Tests/ReceiptReader.Api.Tests.csproj" />
+  </Folder>
 </Solution>
