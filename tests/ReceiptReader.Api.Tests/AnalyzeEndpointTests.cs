@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using ReceiptReader.Api.Analysis;
 using ReceiptReader.Api.Contracts;
@@ -104,25 +105,41 @@ public class AnalyzeEndpointTests
     [Fact]
     public async Task Writes_nothing_to_disk()
     {
-        // The §1 assertion. ASP.NET Core's default multipart binding spools uploads over
-        // 64 KB into Path.GetTempPath(), so this is a real behaviour to verify rather than
-        // a restatement of "we didn't write any File.WriteAllBytes calls".
+        // The §1 assertion, and the sampling point is the whole trick.
+        //
+        // ASP.NET Core's default multipart binding spools uploads over 64 KB into
+        // Path.GetTempPath() using FileOptions.DeleteOnClose, so the file is gone by the
+        // time the response arrives. A before/after snapshot around the request therefore
+        // passes against a naive IFormFile implementation that does write to disk —
+        // verified, not assumed: this test passed against exactly that implementation
+        // before being rewritten.
+        //
+        // Sampling inside the analyzer callback runs mid-request, while a spooled file is
+        // still open and visible in the directory listing.
         var temp = Path.GetTempPath();
         var before = Directory.GetFiles(temp, "*", SearchOption.TopDirectoryOnly).ToHashSet();
+        string[] duringRequest = [];
 
         var analyzer = new Mock<IReceiptAnalyzer>();
         analyzer
             .Setup(a => a.AnalyzeAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Stream, string, CancellationToken>((_, _, _) =>
+            {
+                duringRequest = Directory
+                    .GetFiles(temp, "*", SearchOption.TopDirectoryOnly)
+                    .Except(before)
+                    .ToArray();
+            })
             .ReturnsAsync(ReceiptAnalysisResult.Success(SampleReceipt(), 0.98f));
 
         using var factory = FactoryWith(analyzer.Object);
         var response = await factory.CreateClient().PostAsync("/api/receipts/analyze", Upload(SamplePayload()));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var after = Directory.GetFiles(temp, "*", SearchOption.TopDirectoryOnly).ToHashSet();
-        var created = after.Except(before).ToArray();
+        Assert.Empty(duringRequest);
 
-        Assert.Empty(created);
+        var after = Directory.GetFiles(temp, "*", SearchOption.TopDirectoryOnly).ToHashSet();
+        Assert.Empty(after.Except(before));
     }
 
     [Fact]
