@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite';
+// vitest/config rather than vite: the plain Vite defineConfig has no 'test' property in
+// its type, so the block below would be a type error even though it works at runtime.
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // The built bundle is served from the API's wwwroot in PR8, so there is a single origin

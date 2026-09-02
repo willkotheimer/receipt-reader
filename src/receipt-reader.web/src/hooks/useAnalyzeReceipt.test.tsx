@@ -39,7 +39,7 @@ describe('useAnalyzeReceipt', () => {
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
 
-    const [url, init] = fetchSpy.mock.calls[0];
+    const [url, init] = fetchSpy.mock.calls[0]!;
     expect(url).toBe('/api/receipts/analyze');
     expect(init.method).toBe('POST');
     expect(init.body).toBeInstanceOf(FormData);
@@ -54,7 +54,7 @@ describe('useAnalyzeReceipt', () => {
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
 
-    const body = fetchSpy.mock.calls[0][1].body as FormData;
+    const body = fetchSpy.mock.calls[0]![1].body as FormData;
     expect(body.get('file')).toBeInstanceOf(File);
   });
 
@@ -69,7 +69,7 @@ describe('useAnalyzeReceipt', () => {
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
 
-    const headers = (fetchSpy.mock.calls[0][1].headers ?? {}) as Record<string, string>;
+    const headers = (fetchSpy.mock.calls[0]![1].headers ?? {}) as Record<string, string>;
     expect(Object.keys(headers).map((k) => k.toLowerCase())).not.toContain('content-type');
   });
 
