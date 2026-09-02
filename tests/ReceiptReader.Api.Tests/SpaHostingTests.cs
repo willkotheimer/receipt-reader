@@ -57,7 +57,7 @@ public class SpaHostingTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task Content_security_policy_forbids_inline_script()
+    public async Task Content_security_policy_forbids_inline_and_evaluated_script()
     {
         // The receipt never leaves the browser, so an injected script is the only realistic
         // route to exfiltrating it. Blocking inline script is the control that matters.
@@ -65,8 +65,26 @@ public class SpaHostingTests : IClassFixture<WebApplicationFactory<Program>>
         var csp = string.Join(' ', response.Headers.GetValues("Content-Security-Policy"));
 
         Assert.Contains("default-src 'self'", csp);
-        Assert.DoesNotContain("unsafe-inline", csp);
+        Assert.Contains("script-src 'self'", csp);
         Assert.DoesNotContain("unsafe-eval", csp);
+    }
+
+    [Fact]
+    public async Task Unsafe_inline_is_confined_to_style_attributes()
+    {
+        // The policy does permit 'unsafe-inline', for style attributes only: React and
+        // Reactstrap set element style at runtime. Asserting merely that the string is
+        // absent would be wrong — it is present, deliberately. What must hold is that it
+        // never reaches a script directive, so this checks every directive that carries it.
+        var response = await _factory.CreateClient().GetAsync("/api/health");
+        var csp = string.Join(' ', response.Headers.GetValues("Content-Security-Policy"));
+
+        var relaxed = csp
+            .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(directive => directive.Contains("unsafe-inline", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.All(relaxed, directive => Assert.StartsWith("style-src-attr", directive, StringComparison.Ordinal));
     }
 
     [Fact]
