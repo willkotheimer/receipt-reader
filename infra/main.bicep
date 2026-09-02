@@ -1,7 +1,16 @@
 // The Receipt Reader — infrastructure root.
 //
-// Subscription-scoped so the resource group itself is declared rather than assumed, which
-// makes the whole environment reproducible from nothing and destroyable in one command.
+// Resource-group scoped, deliberately.
+//
+// This was subscription-scoped so the template could declare its own resource group. That
+// is incompatible with least privilege: a subscription-scoped deployment needs permission
+// at subscription scope, so CI would have needed standing write access to the entire
+// subscription rather than to one resource group. The first CI deployment failed with
+// AuthorizationFailed on Microsoft.Resources/deployments/whatIf/action, which is the
+// correct outcome - the identity genuinely should not have had that right.
+//
+// bootstrap.azcli creates the resource group, so nothing is lost but the pretence that the
+// template stood alone; it never did, since the deploy identity had to exist first.
 //
 // No secret is declared, passed, or emitted anywhere in this template. The Document
 // Intelligence account is keyless (disableLocalAuth), deployment is OIDC, and the only
@@ -10,7 +19,7 @@
 //
 // Governance-Ref: §1, §8, §9
 
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @description('Azure region for every resource.')
 param location string = 'centralus'
@@ -46,8 +55,6 @@ param developerPrincipalId string = ''
 @description('Custom hostname, e.g. receipt-reader.willkai.dev. Empty deploys no DNS resources.')
 param customDomain string = ''
 
-var resourceGroupName = 'rg-receipt-reader-${environmentName}'
-
 // Deterministic per-subscription suffix. Both the AI account and the web app need globally
 // unique names, and a hash of the subscription id keeps redeploys stable while avoiding
 // collisions with anyone else's deployment of this template.
@@ -64,14 +71,7 @@ var tags = {
 // deployment error, so the intent stays expressed in the parameter file either way.
 var networkIsolationEnabled = deployNetworkIsolation && appServiceSku != 'F1'
 
-resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: resourceGroupName
-  location: location
-  tags: tags
-}
-
 module monitoring 'modules/monitoring.bicep' = {
-  scope: rg
   name: 'monitoring'
   params: {
     location: location
@@ -82,7 +82,6 @@ module monitoring 'modules/monitoring.bicep' = {
 }
 
 module identity 'modules/identity.bicep' = {
-  scope: rg
   name: 'identity'
   params: {
     location: location
@@ -92,7 +91,6 @@ module identity 'modules/identity.bicep' = {
 }
 
 module network 'modules/network.bicep' = if (networkIsolationEnabled) {
-  scope: rg
   name: 'network'
   params: {
     location: location
@@ -102,7 +100,6 @@ module network 'modules/network.bicep' = if (networkIsolationEnabled) {
 }
 
 module ai 'modules/ai.bicep' = {
-  scope: rg
   name: 'ai'
   params: {
     location: location
@@ -118,7 +115,6 @@ module ai 'modules/ai.bicep' = {
 }
 
 module app 'modules/app.bicep' = {
-  scope: rg
   name: 'app'
   params: {
     location: location
@@ -145,7 +141,7 @@ output appHostName string = app.outputs.defaultHostName
 output appServiceName string = app.outputs.siteName
 
 @description('Resource group everything landed in.')
-output resourceGroupName string = rg.name
+output resourceGroupName string = resourceGroup().name
 
 @description('Document Intelligence endpoint. Not a secret — access requires an AAD token.')
 output documentIntelligenceEndpoint string = ai.outputs.endpoint

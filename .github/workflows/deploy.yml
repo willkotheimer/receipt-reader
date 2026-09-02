@@ -99,8 +99,8 @@ jobs:
         # the real credential, immediately before the apply, so what is printed is what is
         # about to happen.
         run: |
-          az deployment sub what-if \
-            --location centralus \
+          az deployment group what-if \
+            --resource-group rg-receipt-reader-dev \
             --template-file infra/main.bicep \
             --parameters infra/main.dev.bicepparam \
             --name "receipt-reader-$(date +%Y%m%d-%H%M%S)"
@@ -108,8 +108,8 @@ jobs:
       - name: Deploy
         id: deploy
         run: |
-          az deployment sub create \
-            --location centralus \
+          az deployment group create \
+            --resource-group rg-receipt-reader-dev \
             --template-file infra/main.bicep \
             --parameters infra/main.dev.bicepparam \
             --name "receipt-reader-$(date +%Y%m%d-%H%M%S)" \

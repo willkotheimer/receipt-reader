@@ -1,7 +1,15 @@
 # Infrastructure
 
-Azure Bicep for The Receipt Reader. Subscription-scoped, so the resource group is declared
-rather than assumed and the whole environment is reproducible from nothing.
+Azure Bicep for The Receipt Reader. **Resource-group scoped**, so the deploy identity needs
+rights over one resource group and nothing else.
+
+This was subscription-scoped, so the template could declare its own resource group. That is
+incompatible with least privilege: a subscription-scoped deployment requires permission at
+subscription scope, which would have meant standing CI write access to the whole
+subscription. The first CI run failed with `AuthorizationFailed` on
+`Microsoft.Resources/deployments/whatIf/action`, which was the correct outcome. The resource
+group is created by `bootstrap.azcli` instead — as it always was, since the deploy identity
+had to exist before the first deployment anyway.
 
 **Governance-Ref:** §1, §8, §9
 
@@ -9,7 +17,6 @@ rather than assumed and the whole environment is reproducible from nothing.
 
 | Resource | Name | Notes |
 |---|---|---|
-| Resource group | `rg-receipt-reader-dev` | Everything lands here |
 | Log Analytics | `log-rcpt-dev` | Local auth disabled |
 | Application Insights | `appi-rcpt-dev` | Workspace-based |
 | Managed identity | `id-rcpt-dev` | User-assigned; the app runs as this |
@@ -20,7 +27,8 @@ rather than assumed and the whole environment is reproducible from nothing.
 | Web app | `app-rcpt-dev-<token>` | `DOTNETCORE|10.0`, HTTPS-only |
 | Basic-auth policies | `scm`, `ftp` | Both `allow: false` |
 
-Twelve resources; eleven appear in `what-if` (see *Verification* below).
+Eleven resources plus one role assignment. The resource group itself is created by the
+bootstrap, not by this template.
 
 ## Cost
 
@@ -88,8 +96,8 @@ Because the AI account is keyless, your own account needs the data-plane role.
 
 ```bash
 az login
-az deployment sub create \
-  --location centralus \
+az deployment group create \
+  --resource-group rg-receipt-reader-dev \
   --template-file infra/main.bicep \
   --parameters infra/main.dev.bicepparam \
   --parameters developerPrincipalId=$(az ad signed-in-user show --query id -o tsv)
@@ -99,8 +107,8 @@ az deployment sub create \
 
 ```powershell
 az login
-az deployment sub create `
-  --location centralus `
+az deployment group create `
+  --resource-group rg-receipt-reader-dev `
   --template-file infra/main.bicep `
   --parameters infra/main.dev.bicepparam `
   --parameters developerPrincipalId=$(az ad signed-in-user show --query id -o tsv)
@@ -116,8 +124,8 @@ grant is a first-class parameter rather than a note in a wiki.
 
 ```bash
 az bicep build --file infra/main.bicep --stdout > /dev/null   # compiles with zero warnings
-az deployment sub what-if \
-  --location centralus \
+az deployment group what-if \
+  --resource-group rg-receipt-reader-dev \
   --template-file infra/main.bicep \
   --parameters infra/main.dev.bicepparam
 ```
@@ -126,17 +134,21 @@ az deployment sub what-if \
 
 ```powershell
 az bicep build --file infra/main.bicep --stdout > $null
-az deployment sub what-if `
-  --location centralus `
+az deployment group what-if `
+  --resource-group rg-receipt-reader-dev `
   --template-file infra/main.bicep `
   --parameters infra/main.dev.bicepparam
 ```
 
-`what-if` previews **11 of the 12 resources**. The role assignment granting the app's
-identity `Cognitive Services User` is absent, because its `principalId` is a module output
-that does not exist until deployment time and `what-if` cannot evaluate it. That assignment
-is therefore **unverified until the first real deployment** — do not read a clean `what-if`
-as proof that the RBAC grant will succeed.
+`what-if` does not preview the role assignment granting the app's identity
+`Cognitive Services User`: its `principalId` is a module output that does not exist until
+deployment time. That grant was confirmed on the first real deployment.
+
+`what-if` also reports spurious `Modify` entries against the App Service site, the plan and
+Application Insights on a no-op run. They are readback artefacts, not drift —
+`siteConfig` is a sub-resource `what-if` cannot read on `Microsoft.Web/sites`, so settings
+that are already applied appear as additions. `az webapp show` confirms `ftpsState`,
+`minTlsVersion` and VNet integration are set. Do not chase them.
 
 ## Known limitation: §8 is not fully enforceable on F0
 

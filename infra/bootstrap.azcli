@@ -205,8 +205,8 @@ Then create the GitHub environment the deploy job is gated on:
 Finally, run the first deployment locally, granting your own account data-plane access so
 the API can be run against DefaultAzureCredential without re-enabling local auth:
 
-  az deployment sub create \\
-    --location ${LOCATION} \\
+  az deployment group create \\
+    --resource-group ${RESOURCE_GROUP} \\
     --template-file infra/main.bicep \\
     --parameters infra/main.dev.bicepparam \\
     --parameters developerPrincipalId=${DEVELOPER_PRINCIPAL_ID}
