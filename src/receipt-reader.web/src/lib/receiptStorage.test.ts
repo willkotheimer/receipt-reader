@@ -125,7 +125,7 @@ describe('receiptStorage', () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it('never issues a network request', async () => {
+  it('never issues a network request', () => {
     // §1 permits client-bound storage only. If this module ever posted receipts anywhere,
     // the architecture's central claim would be false.
     const fetchSpy = vi.fn();

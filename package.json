@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Governance enforcement tooling for The Receipt Reader (governance.md §3, §5, §10). The client application carries its own package.json under src/receipt-reader.web.",
+  "description": "Governance enforcement tooling for The Receipt Reader (governance.md \u00a73, \u00a75, \u00a710). The client application carries its own package.json under src/receipt-reader.web.",
   "license": "UNLICENSED",
   "engines": {
     "node": "22.22.3"
@@ -15,8 +15,11 @@
     "gov:ref": "node scripts/gov/check-governance-ref.mjs",
     "gov:findings": "node scripts/gov/check-findings.mjs",
     "gov:licenses": "node scripts/gov/check-licenses.mjs",
-    "gov:all": "npm run gov:pins && npm run gov:findings && npm run gov:licenses",
-    "prepare": "husky"
+    "gov:all": "npm run gov:pins && npm run gov:findings && npm run gov:schema && npm run gov:assertions && npm run gov:licenses",
+    "prepare": "husky",
+    "gov:schema": "node scripts/gov/schema-diff.mjs",
+    "gov:tdd": "node scripts/gov/tdd-audit.mjs",
+    "gov:assertions": "node scripts/gov/assertion-audit.mjs"
   },
   "devDependencies": {
     "husky": "9.1.7",
