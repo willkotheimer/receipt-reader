@@ -85,17 +85,44 @@ IDENTITY_PRINCIPAL_ID="$(az identity show --name "${DEPLOY_IDENTITY}" --resource
 # The subject must match GitHub's token claim character for character; a wrong owner, repo
 # or ref fails closed at token exchange with an opaque error.
 #
+# GitHub issues IMMUTABLE, ID-BASED subject claims. The owner and repository carry their
+# numeric ids appended:
+#
+#   repo:willkotheimer@5234281/receipt-reader@1353524688:environment:production
+#
+# not the name-based form the documentation examples still show. Trust therefore binds to
+# this account and this repository rather than to a name, so deleting the repo and letting
+# someone re-register the name does not hand them your subscription.
+#
+# This script originally hardcoded the name-based form, and the first CI deployment failed
+# with AADSTS700213 "No matching federated identity record found". The ids are now read from
+# the GitHub API rather than assumed.
+#
 # Note what is NOT here: a bare `pull_request` subject. This repository is public, so anyone
 # can open a PR. Trust is limited to the main branch and to the protected environment, and
 # the what-if job on pull requests runs with no Azure credentials at all.
 # ---------------------------------------------------------------------------------------
+echo "==> Resolving GitHub owner and repository ids"
+
+GITHUB_API="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}"
+REPO_JSON="$(curl -fsSL "${GITHUB_API}")" || {
+  echo "    ERROR: could not read ${GITHUB_API}. Is the repository name correct and public?" >&2
+  exit 1
+}
+
+REPO_ID="$(printf '%s' "${REPO_JSON}" | python -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
+OWNER_ID="$(printf '%s' "${REPO_JSON}" | python -c 'import sys,json; print(json.load(sys.stdin)["owner"]["id"])')"
+SUBJECT_PREFIX="repo:${GITHUB_OWNER}@${OWNER_ID}/${GITHUB_REPO}@${REPO_ID}"
+
+echo "    subject prefix: ${SUBJECT_PREFIX}"
+
 echo "==> Adding federated credential: main branch"
 az identity federated-credential create \
   --name "github-main" \
   --identity-name "${DEPLOY_IDENTITY}" \
   --resource-group "${RESOURCE_GROUP}" \
   --issuer "https://token.actions.githubusercontent.com" \
-  --subject "repo:${GITHUB_OWNER}/${GITHUB_REPO}:ref:refs/heads/main" \
+  --subject "${SUBJECT_PREFIX}:ref:refs/heads/main" \
   --audiences "api://AzureADTokenExchange" \
   --output none
 
@@ -105,7 +132,7 @@ az identity federated-credential create \
   --identity-name "${DEPLOY_IDENTITY}" \
   --resource-group "${RESOURCE_GROUP}" \
   --issuer "https://token.actions.githubusercontent.com" \
-  --subject "repo:${GITHUB_OWNER}/${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}" \
+  --subject "${SUBJECT_PREFIX}:environment:${GITHUB_ENVIRONMENT}" \
   --audiences "api://AzureADTokenExchange" \
   --output none
 
