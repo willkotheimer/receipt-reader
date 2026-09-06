@@ -39,12 +39,15 @@ const UPRIGHT = `${FIXTURES}/primark-franklin-tn-upright.jpg`;
 // because recording forces a new worker. The viewport rides along here for the same reason —
 // the chromium project spreads devices['Desktop Chrome'], whose own viewport otherwise lands
 // after the config's `use` block and quietly wins.
-// 620 rather than 800: the app is a heading, an input and a table, and at 800 the bottom
-// half of every frame is empty page — which reads as an unfinished screen rather than a
-// deliberately small one. Video size matches the viewport so nothing is letterboxed.
+// 1000x626 is 16:10, which every other walkthrough on the portfolio uses. A previous
+// capture at 1280x620 was 2.06:1 and rendered visibly squashed beside its neighbours — the
+// board reads as one thing, so the aspect ratio is not a free choice.
+//
+// The width also matters: the app's content is capped at 60rem, so 1000 fills the frame
+// while 1280 left a margin down both sides.
 test.use({
-  viewport: { width: 1280, height: 620 },
-  video: { mode: 'on', size: { width: 1280, height: 620 } },
+  viewport: { width: 1000, height: 626 },
+  video: { mode: 'on', size: { width: 1000, height: 626 } },
 });
 
 test.describe('capture', () => {
@@ -52,7 +55,12 @@ test.describe('capture', () => {
 
   // The shots are a sequence: the receipt added in one is what makes the next worth looking
   // at, and localStorage carries it between them only within a single browser context.
-  test.describe.configure({ mode: 'serial' });
+  //
+  // The timeout is raised well past Playwright's 30s default because each test makes two
+  // round trips to a real remote model. The individual expects already allow 60s each, which
+  // the test timeout was silently capping — it passed only while the service happened to be
+  // fast, and failed the first time it was not.
+  test.describe.configure({ mode: 'serial', timeout: 180_000 });
 
   test.beforeAll(() => {
     mkdirSync(OUT, { recursive: true });
@@ -72,7 +80,9 @@ test.describe('capture', () => {
     // Shorter than the walkthrough viewport. The app is a heading, an input and a table; at
     // 800 tall the bottom half of every shot is empty page, which reads as an unfinished
     // screen rather than a small one.
-    await page.setViewportSize({ width: 1280, height: 560 });
+    // Stills sit in a 16:10 grid on the case page, so they match the walkthrough's shape
+    // rather than the viewport that happens to be convenient.
+    await page.setViewportSize({ width: 1000, height: 626 });
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Receipt Reader' })).toBeVisible();
     await expect(page.getByText(/no receipts yet/i)).toBeVisible();
