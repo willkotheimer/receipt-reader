@@ -1,0 +1,307 @@
+/*
+ * The Receipt Reader — visual design.
+ *
+ * Square everywhere, a charcoal bar, and two frames: one grouping the controls, one holding
+ * the results before there is anything to put in it.
+ *
+ * No web font. The wordmark wants weight 800, and system-ui supplies it — loading a face
+ * from Google would mean relaxing `font-src 'self'` in the content security policy, which is
+ * not a trade worth making for a typeface.
+ */
+
+:root {
+  --bar: #2b2e33;
+  --bar-fg: #f2f3f4;
+  --bar-dim: #a4aab2;
+  --app-bg: #ffffff;
+  --app-sub: #f7f7f6;
+  --ink: #16181c;
+  --muted: #5f646b;
+  --rule: #d3d6da;
+  --rule-strong: #9aa0a8;
+  --ok: #0b6e4f;
+  --ok-bg: #e9f4ef;
+  --bad: #a33a2a;
+  --bad-bg: #fbedea;
+
+  --mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--ink);
+}
+
+/* Bootstrap rounds nearly everything. The design is square. */
+.rr-app .btn,
+.rr-app .form-control,
+.rr-app .alert,
+.rr-app .badge {
+  border-radius: 0;
+}
+
+/* ---------- top bar ---------- */
+.rr-bar {
+  background: var(--bar);
+  padding: 0.85rem clamp(1rem, 3vw, 1.75rem);
+}
+
+.rr-bar-inner {
+  max-width: 60rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.rr-wordmark {
+  font-weight: 800;
+  font-size: 1.12rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--bar-fg);
+  margin: 0;
+}
+
+.rr-barnote {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--bar-dim);
+  margin: 0;
+}
+
+/* ---------- layout ---------- */
+.rr-main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: clamp(1.1rem, 3vw, 1.75rem);
+  display: grid;
+  gap: 1.25rem;
+}
+
+/* ---------- framed group ---------- */
+.rr-group {
+  border: 1px solid var(--rule-strong);
+  background: var(--app-sub);
+}
+
+.rr-group-head {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.55rem 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rr-group-body {
+  padding: 1rem 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.rr-file {
+  flex: 1 1 20rem;
+  min-width: min(24rem, 100%);
+}
+
+.rr-app .rr-file .form-control {
+  border-color: var(--rule-strong);
+}
+
+/* ---------- buttons ---------- */
+.rr-app .btn-rr {
+  background: var(--bar);
+  border: 1px solid var(--bar);
+  color: var(--bar-fg);
+  font-weight: 600;
+  font-size: 0.86rem;
+  padding: 0.52rem 1.1rem;
+}
+
+.rr-app .btn-rr:hover:not(:disabled),
+.rr-app .btn-rr:focus-visible:not(:disabled) {
+  background: #3a3e45;
+  border-color: #3a3e45;
+  color: var(--bar-fg);
+}
+
+.rr-app .btn-rr-ghost {
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.86rem;
+  padding: 0.52rem 1.1rem;
+}
+
+.rr-app .btn-rr-ghost:hover:not(:disabled),
+.rr-app .btn-rr-ghost:focus-visible:not(:disabled) {
+  background: #ecedee;
+  color: var(--ink);
+}
+
+/* ---------- status and failure ---------- */
+.rr-working {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.rr-app .rr-alert {
+  border: 1px solid var(--bad);
+  border-left-width: 4px;
+  background: var(--bad-bg);
+  color: var(--bad);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* ---------- results ---------- */
+.rr-results {
+  border: 1px solid var(--rule-strong);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  /* Present at full height before there is anything in it, so nothing shifts when the
+     first receipt lands. */
+  min-height: 19rem;
+}
+
+.rr-results-head {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.55rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rr-count {
+  font-family: var(--mono);
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.rr-results-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rr-empty {
+  flex: 1;
+  margin: 0.9rem;
+  border: 1px dashed var(--rule-strong);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.rr-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.rr-empty .rr-hint {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--rule-strong);
+}
+
+/* ---------- table ---------- */
+.rr-app .rr-results table {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.rr-app .rr-results thead th {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--app-sub);
+  border-bottom: 1px solid var(--rule-strong);
+  font-weight: 500;
+}
+
+.rr-app .rr-results td,
+.rr-app .rr-results th {
+  padding: 0.6rem 0.9rem;
+  border-color: var(--rule);
+  vertical-align: middle;
+}
+
+/* Money lines up down the column once there is more than one receipt. */
+.rr-num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rr-merchant {
+  font-weight: 600;
+}
+
+.rr-item {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.rr-dash {
+  color: var(--rule-strong);
+}
+
+.rr-app .rr-remove {
+  color: var(--bad);
+  padding: 0;
+  font-size: 0.82rem;
+  text-decoration: underline;
+}
+
+.rr-tag-ok {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.38rem;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+/* ---------- spinner ---------- */
+.rr-app .rr-spin {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  color: var(--bar);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rr-app .rr-spin {
+    animation: none;
+  }
+}

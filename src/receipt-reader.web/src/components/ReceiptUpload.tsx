@@ -1,8 +1,8 @@
-import { useId, type ChangeEvent } from 'react';
-import { Alert, FormGroup, Input, Label, Spinner } from 'reactstrap';
+import { useId, useRef, useState, type ChangeEvent } from 'react';
+import { Button, Input, Spinner } from 'reactstrap';
 
 /**
- * The upload control, and the one place a person sees the fail-closed message.
+ * The upload group, and the one place a person sees the fail-closed message.
  *
  * governance.md §1: the API returns one uninformative string for every failure. This
  * component renders exactly that string. Adding a suggestion — "try a clearer photo" —
@@ -11,46 +11,95 @@ import { Alert, FormGroup, Input, Label, Spinner } from 'reactstrap';
  */
 export interface ReceiptUploadProps {
   onSelect: (file: File) => void;
+  onClear: () => void;
   isPending: boolean;
   error: string | null;
+  /** Enables Clear all; there is nothing to clear on a first visit. */
+  hasReceipts: boolean;
 }
 
 /** Matches the content types the API accepts; anything else is refused server-side anyway. */
 const ACCEPTED = 'image/jpeg,image/png,image/tiff,image/bmp,image/heif,application/pdf';
 
-export function ReceiptUpload({ onSelect, isPending, error }: ReceiptUploadProps) {
+export function ReceiptUpload({
+  onSelect,
+  onClear,
+  isPending,
+  error,
+  hasReceipts,
+}: ReceiptUploadProps) {
   const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Choosing a file no longer starts the analysis. The read is a deliberate second step, so
+  // the group has a primary action and there is somewhere to show progress.
+  const [chosen, setChosen] = useState<File | null>(null);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) onSelect(file);
-    // Reset so selecting the same file twice fires a change event both times.
-    event.target.value = '';
+    setChosen(event.target.files?.[0] ?? null);
+  };
+
+  const handleRead = () => {
+    if (chosen) onSelect(chosen);
+  };
+
+  const handleClear = () => {
+    setChosen(null);
+    // Reset the input too, so choosing the same file again still fires a change event.
+    if (inputRef.current) inputRef.current.value = '';
+    onClear();
   };
 
   return (
     <div>
-      <FormGroup>
-        <Label for={inputId}>Receipt image or PDF</Label>
-        <Input
-          id={inputId}
-          type="file"
-          accept={ACCEPTED}
-          disabled={isPending}
-          onChange={handleChange}
-        />
-      </FormGroup>
+      <div className="rr-group">
+        <div className="rr-group-head">Upload</div>
+        <div className="rr-group-body">
+          <div className="rr-file">
+            <label className="visually-hidden" htmlFor={inputId}>
+              Receipt image or PDF
+            </label>
+            <Input
+              id={inputId}
+              innerRef={inputRef}
+              type="file"
+              accept={ACCEPTED}
+              disabled={isPending}
+              onChange={handleChange}
+            />
+          </div>
+
+          <Button
+            className="btn-rr"
+            onClick={handleRead}
+            disabled={isPending || chosen === null}
+            type="button"
+          >
+            Read receipt
+          </Button>
+
+          <Button
+            className="btn-rr-ghost"
+            onClick={handleClear}
+            disabled={isPending || (!hasReceipts && chosen === null)}
+            type="button"
+          >
+            Clear all
+          </Button>
+        </div>
+      </div>
 
       {isPending && (
-        <p className="text-muted d-flex align-items-center gap-2">
-          <Spinner size="sm" /> Analyzing…
+        <p className="rr-working mt-3">
+          <Spinner className="rr-spin" aria-hidden="true" />
+          <span>Analyzing receipt…</span>
         </p>
       )}
 
       {error && (
-        <Alert color="danger" role="alert">
+        <p className="rr-alert mt-3" role="alert">
           {error}
-        </Alert>
+        </p>
       )}
     </div>
   );

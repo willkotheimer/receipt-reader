@@ -60,7 +60,10 @@ describe('ReceiptTable', () => {
   it('shows the line items belonging to a receipt', () => {
     render(<ReceiptTable receipts={[receipt()]} onRemove={vi.fn()} />);
 
-    expect(screen.getByText('Flat white')).toBeInTheDocument();
+    // Substring, not exact: the line now reads "Flat white · 2 × $4.50" in one node, so the
+    // description shares a text node with its quantity and price.
+    expect(screen.getByText(/Flat white/)).toBeInTheDocument();
+    expect(screen.getByText(/2 × \$4\.50/)).toBeInTheDocument();
   });
 
   it('calls onRemove with the receipt id', async () => {
