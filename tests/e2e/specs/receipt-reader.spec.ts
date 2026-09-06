@@ -29,18 +29,20 @@ async function stubAnalyzeSuccess(page: Page, merchantName = 'Contoso Coffee') {
 }
 
 async function upload(page: Page, name = 'receipt.jpg') {
-  await page.getByLabel(/receipt/i).setInputFiles({
+  // Two steps now: choosing a file no longer starts the analysis.
+  await page.getByLabel('Receipt image or PDF').setInputFiles({
     name,
     mimeType: 'image/jpeg',
     buffer: JPEG_BYTES,
   });
+  await page.getByRole('button', { name: /read receipt/i }).click();
 }
 
 test.describe('The Receipt Reader', () => {
   test('serves the client at the root', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: 'The Receipt Reader' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Receipt Reader' })).toBeVisible();
   });
 
   test('shows an empty state before anything is uploaded', async ({ page }) => {
@@ -123,7 +125,7 @@ test.describe('The Receipt Reader', () => {
     const response = await page.goto('/some/deep/route');
 
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole('heading', { name: 'The Receipt Reader' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Receipt Reader' })).toBeVisible();
   });
 
   test('the security headers are present on the real response', async ({ page }) => {

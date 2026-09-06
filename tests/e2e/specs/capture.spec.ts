@@ -63,7 +63,9 @@ test.describe('capture', () => {
   }
 
   async function upload(page: Page, file: string) {
-    await page.getByLabel(/receipt/i).setInputFiles(file);
+    // Two steps now: choosing a file no longer starts the analysis.
+    await page.getByLabel('Receipt image or PDF').setInputFiles(file);
+    await page.getByRole('button', { name: /read receipt/i }).click();
   }
 
   test('screenshots', async ({ page }) => {
@@ -72,7 +74,7 @@ test.describe('capture', () => {
     // screen rather than a small one.
     await page.setViewportSize({ width: 1280, height: 560 });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'The Receipt Reader' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Receipt Reader' })).toBeVisible();
     await expect(page.getByText(/no receipts yet/i)).toBeVisible();
     await shot(page, 'rr_empty');
 

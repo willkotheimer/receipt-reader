@@ -1,4 +1,4 @@
-import { Alert, Col, Container, Row } from 'reactstrap';
+import { Alert } from 'reactstrap';
 import { ReceiptUpload } from './components/ReceiptUpload';
 import { ReceiptTable } from './components/ReceiptTable';
 import { useAnalyzeReceipt } from './hooks/useAnalyzeReceipt';
@@ -12,39 +12,39 @@ export function App() {
     analyze.mutate(file, { onSuccess: (receipt) => store.add(receipt) });
   };
 
+  const handleClear = () => {
+    analyze.reset();
+    store.clear();
+  };
+
   return (
-    <Container className="py-4">
-      <Row>
-        <Col>
-          <h1 className="h3 mb-1">The Receipt Reader</h1>
-          <p className="text-muted">
-            Receipts are processed in memory and never stored on the server. Extracted data
-            stays in this browser.
-          </p>
-        </Col>
-      </Row>
+    <div className="rr-app">
+      {/* The bar gives the page a top edge and carries the one genuinely unusual thing
+          about this app, which was previously buried in body text. */}
+      <header className="rr-bar">
+        <div className="rr-bar-inner">
+          <h1 className="rr-wordmark">Receipt Reader</h1>
+          <p className="rr-barnote">processed in memory · never stored on the server</p>
+        </div>
+      </header>
 
-      <Row className="mb-4">
-        <Col md={6}>
-          <ReceiptUpload
-            onSelect={handleSelect}
-            isPending={analyze.isPending}
-            error={analyze.error?.message ?? null}
-          />
-        </Col>
-      </Row>
+      <main className="rr-main">
+        <ReceiptUpload
+          onSelect={handleSelect}
+          onClear={handleClear}
+          isPending={analyze.isPending}
+          error={analyze.error?.message ?? null}
+          hasReceipts={store.receipts.length > 0}
+        />
 
-      {!store.persisted && (
-        <Alert color="warning">
-          Receipts could not be saved to this browser, so they will be lost on reload.
-        </Alert>
-      )}
+        {!store.persisted && (
+          <Alert color="warning" className="mb-0">
+            Receipts could not be saved to this browser, so they will be lost on reload.
+          </Alert>
+        )}
 
-      <Row>
-        <Col>
-          <ReceiptTable receipts={store.receipts} onRemove={store.remove} />
-        </Col>
-      </Row>
-    </Container>
+        <ReceiptTable receipts={store.receipts} onRemove={store.remove} />
+      </main>
+    </div>
   );
 }
