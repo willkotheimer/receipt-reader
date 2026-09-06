@@ -1,0 +1,35 @@
+# governance.md §6 — the TDD audit, run before anything leaves this machine.
+#
+# The same check runs as a required status check on every pull request, and that is the
+# enforcement that cannot be skipped. This hook exists because that one only speaks up after
+# the work is already pushed and a branch is already shaped wrong: by then the fix is a
+# rebase rather than one more commit.
+#
+# Be clear about what this is worth. `git push --no-verify` skips it, and a clone that never
+# ran `npm ci` has no hooks at all — so it is a guardrail for people and agents acting in
+# good faith, not a wall against one that is not. The wall is on the server.
+#
+# Governance-Ref: §6
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+# Nothing to audit when pushing main itself: the range is empty and the question was already
+# answered on the pull request that put those commits there.
+if [ "$branch" = "main" ]; then
+  exit 0
+fi
+
+# origin/main may be stale, which only ever widens the range — safe, and cheaper than
+# fetching on every push.
+if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+  echo "pre-push: no origin/main to compare against; skipping the §6 audit."
+  exit 0
+fi
+
+node scripts/gov/tdd-audit.mjs origin/main HEAD || {
+  echo ""
+  echo "Push refused. Commit the failing test first, then the code that makes it pass."
+  echo "If this branch genuinely has no testable behaviour change, say so in the PR and"
+  echo "push with --no-verify — deliberately, not by habit."
+  exit 1
+}
